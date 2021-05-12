@@ -37,7 +37,7 @@ RpcDigitalOut myled2(LED2,"myled2");
 RpcDigitalOut myled3(LED3,"myled3");
 BufferedSerial pc(USBTX, USBRX);
 void LEDControl(Arguments *in, Reply *out);
-void zdirectionchange(float* output);
+int zdirectionchange(float* output);
 RPCFunction rpcLED(&LEDControl, "LEDControl");
 double x, y;
 
@@ -252,6 +252,7 @@ int main(int argc, char* argv[]) {
 
 void LEDControl (Arguments *in, Reply *out)   {
     bool success = true;
+    int zchange;
 
     // Attempt to read new data from the accelerometer
     got_data = ReadAccelerometer(error_reporter, model_input->data.f,
@@ -273,7 +274,7 @@ void LEDControl (Arguments *in, Reply *out)   {
 
     // Analyze the results to obtain a prediction
     gesture_index = PredictGesture(interpreter->output(0)->data.f);
-    zdirectionchange(interpreter->output(0)->data.f);
+    zchange = zdirectionchange(interpreter->output(0)->data.f);
 
     // Clear the buffer next time we read data
     should_clear_buffer = gesture_index < label_num;
@@ -308,7 +309,7 @@ void LEDControl (Arguments *in, Reply *out)   {
     message_num++;
     MQTT::Message message;
     char buff[100];
-    sprintf(buff, "%d", x);
+    sprintf(buff, "%d %d", x, zchange);
     message.qos = MQTT::QOS0;
     message.retained = false;
     message.dup = false;
@@ -320,13 +321,11 @@ void LEDControl (Arguments *in, Reply *out)   {
     printf("Puslish message: %s\r\n", buff);
 }
 
-void zdirectionchange(float* output) {
+int zdirectionchange(float* output) {
   int i = 1;
   for(;i < input_length;i++) {
     if ((output[i] < 0) != (output[i - 1] < 0))
-      zchange[i] = true;
-    else
-      zchange[i] = false;
-    
+      return 1;
   }
+  return 0;
 }
