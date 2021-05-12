@@ -37,10 +37,11 @@ RpcDigitalOut myled2(LED2,"myled2");
 RpcDigitalOut myled3(LED3,"myled3");
 BufferedSerial pc(USBTX, USBRX);
 void LEDControl(Arguments *in, Reply *out);
-bool zdirection(float* output);
+void zdirectionchange(float* output);
 RPCFunction rpcLED(&LEDControl, "LEDControl");
 double x, y;
 
+bool zchange[256];
   // Whether we should clear the buffer next time we fetch data
   bool should_clear_buffer = false;
   bool got_data = false;
@@ -108,22 +109,6 @@ void messageArrived(MQTT::MessageData& md) {
     sprintf(payload, "Payload %.*s\r\n", message.payloadlen, (char*)message.payload);
     printf(payload);
     ++arrivedcount;
-}
-
-void publish_message(MQTT::Client<MQTTNetwork, Countdown>* client) {
-    message_num++;
-    MQTT::Message message;
-    char buff[100];
-    sprintf(buff, "QoS0 Hello, Python! #%d", message_num);
-    message.qos = MQTT::QOS0;
-    message.retained = false;
-    message.dup = false;
-    message.payload = (void*) buff;
-    message.payloadlen = strlen(buff) + 1;
-    int rc = client->publish(topic, message);
-
-    printf("rc:  %d\r\n", rc);
-    printf("Puslish message: %s\r\n", buff);
 }
 
 void close_mqtt() {
@@ -198,7 +183,7 @@ int main(int argc, char* argv[]) {
 
   error_reporter->Report("Set up successful...\n");
 
-wifi = WiFiInterface::get_default_instance();
+  wifi = WiFiInterface::get_default_instance();
     if (!wifi) {
             printf("ERROR: No WiFiInterface found.\r\n");
             return -1;
@@ -288,7 +273,7 @@ void LEDControl (Arguments *in, Reply *out)   {
 
     // Analyze the results to obtain a prediction
     gesture_index = PredictGesture(interpreter->output(0)->data.f);
-    zchange = zdirection(interpreter->output(0)->data.f);
+    zdirectionchange(interpreter->output(0)->data.f);
 
     // Clear the buffer next time we read data
     should_clear_buffer = gesture_index < label_num;
@@ -319,6 +304,29 @@ void LEDControl (Arguments *in, Reply *out)   {
     } else {
         out->putData("Failed to execute LED control.");
     }
-    mqtt_thread.start(callback(&mqtt_queue, &EventQueue::dispatch_forever));
-    btn2.rise(mqtt_queue.event(&publish_message, &client));
+
+    message_num++;
+    MQTT::Message message;
+    char buff[100];
+    sprintf(buff, "%d", x);
+    message.qos = MQTT::QOS0;
+    message.retained = false;
+    message.dup = false;
+    message.payload = (void*) buff;
+    message.payloadlen = strlen(buff) + 1;
+    int rc = client->publish(topic, message);
+
+    printf("rc:  %d\r\n", rc);
+    printf("Puslish message: %s\r\n", buff);
+}
+
+void zdirectionchange(float* output) {
+  int i = 1;
+  for(;i < input_length;i++) {
+    if ((output[i] < 0) != (output[i - 1] < 0))
+      zchange[i] = true;
+    else
+      zchange[i] = false;
+    
+  }
 }
